@@ -9,7 +9,7 @@ PA-View is a Python-based utility designed to parse and audit massive Palo Alto 
 *   **Live Search & Export:** Real-time text filtering within tabs and 1-click export of active tables to CSV.
 *   **Visual Statistics:** Integrated Chart.js for quick visualization of Allow vs. Drop/Deny policies.
 *   **Secure HTML Generation:** Built-in XSS protection and layout stabilization for massive datasets.
-<img width="3072" height="1664" alt="image" src="https://github.com/user-attachments/assets/d2d35a26-faa9-4cad-af68-efc49ede9825" />
+<img width="3072" height="1664" alt="image" src="https://github.com/user-attachments/assets/eefcc0e7-6baa-4cad-a8c5-27302f9ddb33" />
 
 ## Requirements
 
