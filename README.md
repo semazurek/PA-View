@@ -23,6 +23,10 @@ PA-View is a Python-based utility designed to parse and audit massive Palo Alto 
 2.  **Run the Script:** Execute PA-View via the command line, providing the path to your XML file as an argument.
 
 ```bash
+python PA-View.py
+```
+or
+```bash
 python PA-View.py /path/to/your/running-config.xml
 ```
 
