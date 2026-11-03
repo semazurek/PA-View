@@ -22,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"
 DEFAULT = "N/A"
 
 
@@ -181,7 +181,7 @@ def _parse_config(xml_file_path: str | os.PathLike[str]) -> dict[str, Any]:
     """Parse the exported config into a normalized, JSON-serializable model."""
     path = Path(xml_file_path).expanduser()
     if not path.is_file():
-        raise FileNotFoundError(f"Nie znaleziono pliku: {path}")
+        raise FileNotFoundError(f"File not found: {path}")
 
     # PAN-OS exports are normally namespace-free XML. Reject DTD/entity declarations
     # before parsing to avoid unsafe XML entity expansion on untrusted input.
@@ -193,13 +193,13 @@ def _parse_config(xml_file_path: str | os.PathLike[str]) -> dict[str, Any]:
                 break
             scan = (tail + chunk).upper()
             if b"<!DOCTYPE" in scan or b"<!ENTITY" in scan:
-                raise ValueError("Plik zawiera deklarację DTD/ENTITY. Dla bezpieczeństwa import został przerwany.")
+                raise ValueError("The file contains a DTD/ENTITY declaration. Import was aborted for security reasons.")
             tail = scan[-16:]
 
     try:
         tree = ET.parse(path)
     except ET.ParseError as exc:
-        raise ValueError(f"Nie udało się sparsować XML: {exc}") from exc
+        raise ValueError(f"Failed to parse XML: {exc}") from exc
     root = tree.getroot()
 
     # --- DEVICE / MANAGEMENT ---
@@ -758,36 +758,36 @@ def _build_findings(policies: dict[str, list[dict[str, Any]]], objects: dict[str
             continue
         if rule["risky"]:
             findings.append({"severity": "High", "type": "Security policy", "object": rule["name"],
-                             "details": "Aktywna reguła allow Any-Any bez profilu Security i bez logowania na końcu sesji."})
+                             "details": "Active Any-Any allow rule without a Security profile and without session-end logging."})
         elif rule["prof_group"] == "None":
             findings.append({"severity": "Medium", "type": "Security policy", "object": rule["name"],
-                             "details": "Reguła allow nie ma przypisanej grupy ani indywidualnych profili Security."})
+                             "details": "The allow rule has no Security profile group or individual Security profiles assigned."})
         if rule["log_end"] != "yes":
             findings.append({"severity": "Low", "type": "Logging", "object": rule["name"],
-                             "details": "Logowanie na końcu sesji jest wyłączone (log-end != yes)."})
+                             "details": "Session-end logging is disabled (log-end != yes)."})
         if rule["desc"] == "":
             findings.append({"severity": "Info", "type": "Documentation", "object": rule["name"],
-                             "details": "Reguła nie ma opisu."})
+                             "details": "The rule has no description."})
 
     for obj in objects["addresses"]:
         if obj.get("orphaned"):
             findings.append({"severity": "Info", "type": "Unused object", "object": obj["name"],
-                             "details": "Obiekt adresowy nie został znaleziony w odwołaniach analizowanych polityk."})
+                             "details": "The address object was not found in the references of the analyzed policies."})
     for obj in objects["services"]:
         if obj.get("orphaned"):
             findings.append({"severity": "Info", "type": "Unused object", "object": obj["name"],
-                             "details": "Obiekt usługi nie został znaleziony w odwołaniach analizowanych polityk."})
+                             "details": "The service object was not found in the references of the analyzed policies."})
     for zone in zones:
         if zone["interfaces"] == "N/A":
             findings.append({"severity": "Low", "type": "Network", "object": zone["name"],
-                             "details": "Strefa nie ma przypisanego interfejsu w analizowanym eksporcie."})
+                             "details": "The zone has no interface assigned in the analyzed export."})
 
     ike_names = {g["name"] for g in vpns["ike"]}
     for tunnel in vpns["ipsec"]:
         bound = _tokens(tunnel.get("ike_gateway", ""))
         if bound and not (bound & ike_names):
             findings.append({"severity": "Medium", "type": "VPN", "object": tunnel["name"],
-                             "details": "Tunel IPSec wskazuje IKE Gateway, którego nie znaleziono w analizowanej konfiguracji."})
+                             "details": "The IPSec tunnel references an IKE Gateway that was not found in the analyzed configuration."})
     for profile in vpns["crypto_ike"] + vpns["crypto_ipsec"]:
         algorithms = " ".join(str(profile.get(k, "")) for k in ("hash", "auth", "enc", "dh")).lower()
         weak_tokens = {"3des", "des", "md5", "sha1", "group1", "group2", "group5"}
@@ -795,7 +795,7 @@ def _build_findings(policies: dict[str, list[dict[str, Any]]], objects: dict[str
         weak = sorted(weak_tokens & present_tokens)
         if weak:
             findings.append({"severity": "Medium", "type": "Cryptography", "object": profile["name"],
-                             "details": "Profil zawiera algorytm/grupę wymagającą przeglądu: " + ", ".join(weak) + "."})
+                             "details": "The profile contains an algorithm/group that requires review: " + ", ".join(weak) + "."})
     return findings
 
 
@@ -811,7 +811,7 @@ def _cell(value: Any, mono: bool = False) -> str:
 
 
 def _table(title: str, headers: list[str], rows: list[Any], table_id: str = "", note: str = "",
-           empty: str = "Brak danych w analizowanym eksporcie XML.") -> str:
+           empty: str = "No data in the analyzed XML export.") -> str:
     if rows:
         body = []
         for item in rows:
@@ -830,7 +830,7 @@ def _table(title: str, headers: list[str], rows: list[Any], table_id: str = "", 
     hint = f'<div class="panel-note">{esc(note)}</div>' if note else ""
     count = len(rows)
     return f'''<section class="panel">
-      <div class="panel-heading"><div class="panel-title">{esc(title)}</div><div class="panel-tools"><span class="row-count">{count}</span><button class="icon-button" type="button" title="Odśwież widok" aria-label="Odśwież widok" onclick="refreshPanel(this)">↻</button><button class="icon-button" type="button" title="Zwiń panel" aria-label="Zwiń panel" onclick="togglePanel(this)">−</button></div></div>
+      <div class="panel-heading"><div class="panel-title">{esc(title)}</div><div class="panel-tools"><span class="row-count">{count}</span><button class="icon-button" type="button" title="Refresh panel" aria-label="Refresh panel" onclick="refreshPanel(this)">↻</button><button class="icon-button" type="button" title="Collapse panel" aria-label="Collapse panel" onclick="togglePanel(this)">−</button></div></div>
       {hint}<div class="table-wrap"><table class="data-table" data-table-id="{esc(table_id or re.sub(r'[^a-z0-9]+','-',title.lower()).strip('-'))}"><thead><tr>{head}</tr></thead><tbody>{body_html}</tbody></table></div>
     </section>'''
 
@@ -838,7 +838,7 @@ def _table(title: str, headers: list[str], rows: list[Any], table_id: str = "", 
 def _panel(title: str, body: str, note: str = "", count: str = "") -> str:
     hint = f'<div class="panel-note">{esc(note)}</div>' if note else ""
     count_html = f'<span class="row-count">{esc(count)}</span>' if count else ""
-    return f'''<section class="panel"><div class="panel-heading"><div class="panel-title">{esc(title)}</div><div class="panel-tools">{count_html}<button class="icon-button" type="button" title="Zwiń panel" aria-label="Zwiń panel" onclick="togglePanel(this)">−</button></div></div>{hint}<div class="panel-body">{body}</div></section>'''
+    return f'''<section class="panel"><div class="panel-heading"><div class="panel-title">{esc(title)}</div><div class="panel-tools">{count_html}<button class="icon-button" type="button" title="Collapse panel" aria-label="Collapse panel" onclick="togglePanel(this)">−</button></div></div>{hint}<div class="panel-body">{body}</div></section>'''
 
 
 def _kv(items: list[tuple[str, Any]]) -> str:
@@ -886,7 +886,7 @@ def _policy_rows(rules: list[dict[str, Any]], category: str = "security") -> lis
 
 
 def _render_page(page_id: str, title: str, content: str, active: bool = False) -> str:
-    return f'<section class="page {"active" if active else ""}" id="page-{esc(page_id)}" data-page="{esc(page_id)}"><div class="page-heading"><div><div class="eyebrow">PA-VM CONFIGURATION VIEW</div><h1>{esc(title)}</h1></div><div class="page-meta">Źródło: {esc(page_id.upper())}</div></div>{content}</section>'
+    return f'<section class="page {"active" if active else ""}" id="page-{esc(page_id)}" data-page="{esc(page_id)}"><div class="page-heading"><div><div class="eyebrow">PA-VM CONFIGURATION VIEW</div><h1>{esc(title)}</h1></div><div class="page-meta">Source: {esc(page_id.upper())}</div></div>{content}</section>'
 
 
 def _build_pages(data: dict[str, Any]) -> tuple[str, str]:
@@ -907,12 +907,12 @@ def _build_pages(data: dict[str, Any]) -> tuple[str, str]:
 
     # DASHBOARD
     stats = "<div class=\"stat-grid\">" + "".join([
-        _stat("Security rules", len(security), f"{len(active_security)} aktywnych"),
-        _stat("Allow rules", allow_count, "Aktywne reguły allow", "green"),
-        _stat("Deny / other", deny_count, "Aktywne reguły pozostałe", "blue"),
+        _stat("Security rules", len(security), f"{len(active_security)} active"),
+        _stat("Allow rules", allow_count, "Active allow rules", "green"),
+        _stat("Deny / other", deny_count, "Active deny / other rules", "blue"),
         _stat("Audit findings", len(findings), f"{high_findings} high · {medium_findings} medium", "orange" if high_findings or medium_findings else "green"),
-        _stat("Interfaces", len(data["interfaces"]), "Wpisy interfejsów w XML", "blue"),
-        _stat("Address objects", len(objects["addresses"]), f"{orphan_addresses} nieużywanych wg analizy", "orange" if orphan_addresses else ""),
+        _stat("Interfaces", len(data["interfaces"]), "Interface entries in XML", "blue"),
+        _stat("Address objects", len(objects["addresses"]), f"{orphan_addresses} unused according to analysis", "orange" if orphan_addresses else ""),
     ]) + "</div>"
     general_items = [
         ("Device Name", di["hostname"]), ("Management IP Address", di["ip_address"]),
@@ -930,19 +930,19 @@ def _build_pages(data: dict[str, Any]) -> tuple[str, str]:
                              "risk": "true" if item["severity"] in {"High", "Medium"} else "false"})
     dashboard = stats
     dashboard += '<div class="dashboard-grid dashboard-grid-main">'
-    dashboard += _panel("General Information", _kv(general_items), note="Wartości odczytane z eksportu konfiguracji XML.")
+    dashboard += _panel("General Information", _kv(general_items), note="Values read from the XML configuration export.")
     dashboard += _panel("Configured Administrators", _table("", ["Admin", "Role / Permissions", "Password Profile", "Password Hash"], admin_rows, "admins"),
-                        note="Lista skonfigurowanych kont. Nie jest to lista aktywnych sesji logowania.")
+                        note="Lista skonfigurowanych kont. Nie jest to lista active sesji logowania.")
     dashboard += '</div><div class="dashboard-grid">'
     dashboard += _panel("Configuration Runtime Widgets", '<div class="runtime-grid">'
-                        '<div class="runtime-item"><span class="runtime-label">Logged In Admins</span><strong>Unavailable</strong><small>Aktywne sesje nie są przechowywane w running-config.xml.</small></div>'
-                        '<div class="runtime-item"><span class="runtime-label">System Logs</span><strong>Unavailable</strong><small>Logi wymagają danych runtime / API / eksportu logów.</small></div>'
-                        '<div class="runtime-item"><span class="runtime-label">Config Logs</span><strong>Unavailable</strong><small>Historia zmian wymaga eksportu logów lub API.</small></div>'
-                        '<div class="runtime-item"><span class="runtime-label">Data Logs / ACC</span><strong>Unavailable</strong><small>Statystyki ruchu i ACC nie wynikają z konfiguracji XML.</small></div>'
-                        '</div>', note="Celowo nie generujemy fikcyjnych danych operacyjnych.")
+                        '<div class="runtime-item"><span class="runtime-label">Logged In Admins</span><strong>Unavailable</strong><small>Active sessions are not stored in running-config.xml.</small></div>'
+                        '<div class="runtime-item"><span class="runtime-label">System Logs</span><strong>Unavailable</strong><small>Logs require runtime data / API / log exports.</small></div>'
+                        '<div class="runtime-item"><span class="runtime-label">Config Logs</span><strong>Unavailable</strong><small>Change history requires log exports or API access.</small></div>'
+                        '<div class="runtime-item"><span class="runtime-label">Data Logs / ACC</span><strong>Unavailable</strong><small>Traffic and ACC statistics are not available from the XML configuration.</small></div>'
+                        '</div>', note="Operational data is intentionally not fabricated.")
     dashboard += _panel("Policy Distribution", f'<div class="chart-block"><div class="donut" style="--allow:{allow_count};--deny:{deny_count};--total:{max(allow_count+deny_count,1)}"><div class="donut-center"><strong>{allow_count+deny_count}</strong><span>ACTIVE</span></div></div><div class="legend"><span><i class="dot allow"></i>Allow <b>{allow_count}</b></span><span><i class="dot deny"></i>Deny / other <b>{deny_count}</b></span><span><i class="dot disabled-dot"></i>Disabled <b>{len(security)-len(active_security)}</b></span></div></div>')
     dashboard += '</div>' + _table("Audit Findings", ["Severity", "Category", "Object", "Observation"], finding_rows, "findings",
-                                            note="Wyniki są statycznymi wskazówkami do weryfikacji, a nie pełnym audytem bezpieczeństwa PAN-OS.")
+                                            note="These results are static items for review, not a complete PAN-OS security audit.")
 
     # NETWORK
     zone_rows = [[f'<strong>{esc(z["name"])}</strong>', _cell(z["type"]), _cell(z["interfaces"], True), _cell(z["enable_user_id"])] for z in data["zones"]]
@@ -999,7 +999,7 @@ def _build_pages(data: dict[str, Any]) -> tuple[str, str]:
     qos_rows = _policy_rows(policies["qos"], "other")
     dos_rows = _policy_rows(policies["dos"], "other")
     policy_page = _table("Security Policy Rules", ["Rule / Scope", "From Zone", "Source", "To Zone", "Destination", "Application", "Service", "Action / Profiles / Logging", "Status"], security_rows, "security-rules",
-                         note="Czerwone wiersze to potencjalnie ryzykowne reguły Any-Any Allow bez profilu i logowania na końcu sesji. Kliknij nagłówek tabeli, aby sortować.")
+                         note="Red rows indicate potentially risky Any-Any allow rules without a profile and session-end logging. Click a table header to sort.")
     policy_page += _table("NAT Policies", ["Rule / Scope", "From", "To", "Source", "Destination", "Source Translation", "Destination Translation", "Status"], nat_rows, "nat-rules")
     policy_page += _table("Decryption Policies", ["Rule / Scope", "From", "To", "Source", "Destination", "Action", "Schedule"], decrypt_rows, "decryption-rules")
     policy_page += _table("Policy Based Forwarding", ["Rule / Scope", "From", "Source", "Destination", "Egress Interface", "Next Hop", "Monitor"], pbf_rows, "pbf-rules")
@@ -1033,13 +1033,13 @@ def _build_pages(data: dict[str, Any]) -> tuple[str, str]:
     device += _table("SSL/TLS Service Profiles", ["Profile", "Certificate", "Minimum Protocol", "Maximum Protocol"], ssl_rows, "ssl-profiles")
 
     # MONITOR: explicit offline/runtime boundary + static log configuration.
-    monitor = '<div class="notice notice-info"><strong>Tryb offline — eksport konfiguracji XML</strong><p>Ten raport analizuje konfigurację zapisaną w pliku. Nie łączy się z firewallem i nie odczytuje bieżących sesji, liczników ruchu, ACC, system logs, data logs ani statusu usług. Do tych danych potrzebna byłaby integracja z PAN-OS XML API albo osobny eksport logów.</p></div>'
+    monitor = '<div class="notice notice-info"><strong>Offline mode — XML configuration export</strong><p>This report analyzes configuration stored in a file. It does not connect to the firewall or retrieve current sessions, traffic counters, ACC, system logs, data logs, or service status. Access to this data would require PAN-OS XML API integration or separate log exports.</p></div>'
     monitor += '<div class="dashboard-grid">'
     monitor += _panel("Runtime Widgets", '<div class="runtime-grid">'
-                      '<div class="runtime-item"><span class="runtime-label">Logged In Admins</span><strong>Not in XML</strong><small>Brak informacji o bieżących sesjach.</small></div>'
-                      '<div class="runtime-item"><span class="runtime-label">System Logs</span><strong>Not in XML</strong><small>Brak danych logów urządzenia.</small></div>'
-                      '<div class="runtime-item"><span class="runtime-label">Config Logs</span><strong>Not in XML</strong><small>Brak historii commitów i zmian.</small></div>'
-                      '<div class="runtime-item"><span class="runtime-label">ACC Risk Factor</span><strong>Not in XML</strong><small>Brak telemetrii i statystyk ostatnich 60 minut.</small></div>'
+                      '<div class="runtime-item"><span class="runtime-label">Logged In Admins</span><strong>Not in XML</strong><small>Current session information is unavailable.</small></div>'
+                      '<div class="runtime-item"><span class="runtime-label">System Logs</span><strong>Not in XML</strong><small>Device log data is unavailable.</small></div>'
+                      '<div class="runtime-item"><span class="runtime-label">Config Logs</span><strong>Not in XML</strong><small>Commit and change history is unavailable.</small></div>'
+                      '<div class="runtime-item"><span class="runtime-label">ACC Risk Factor</span><strong>Not in XML</strong><small>Telemetry and statistics for the last 60 minutes are unavailable.</small></div>'
                       '</div>')
     monitor += _panel("Configuration Snapshot", _kv([
         ("Input file", data["source_file"]), ("Hostname", di["hostname"]), ("Management IP", di["ip_address"]),
@@ -1091,6 +1091,11 @@ def _nav_count(page_id: str, data: dict[str, Any]) -> str:
 def generate_html(output_path: str | os.PathLike[str], data: dict[str, Any]) -> None:
     nav_html, pages_html = _build_pages(data)
     safe_json = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    try:
+        original_xml = Path(data["source_path"]).read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError):
+        original_xml = ""
+    safe_xml = json.dumps(original_xml, ensure_ascii=False).replace("</", "<\\/")
     title = f"PA-View · {data['device_info'].get('hostname', 'Palo Alto')}"
     template = r'''<!DOCTYPE html>
 <html lang="pl">
@@ -1109,13 +1114,24 @@ button,input,select{font:inherit}.topbar{height:58px;background:var(--nav);color
 @media(max-width:1250px){.stat-grid{grid-template-columns:repeat(3,minmax(130px,1fr))}.dashboard-grid-main{grid-template-columns:1fr 1fr}.topnav button{padding:0 9px}}
 @media(max-width:900px){:root{--sidebar:185px}.dashboard-grid,.dashboard-grid-main{grid-template-columns:1fr}.toolbar{position:static}.main{padding:0 9px 18px}.toolbar{margin:0 -9px 10px;padding:0 9px}.topbar{gap:10px;padding:0 10px}.brand{min-width:auto}.topnav button{padding:0 8px;font-size:11px}.topbar-right{display:none}}
 @media(max-width:650px){.layout{grid-template-columns:1fr}.sidebar{position:static;height:auto;display:flex;overflow:auto;padding:5px;gap:3px;border-right:0;border-bottom:1px solid var(--line)}.sidebar-caption,.nav-group-label{display:none}.side-link{width:auto;white-space:nowrap;padding:8px;border:0}.side-link.active{border-bottom:2px solid var(--yellow)}.nav-count{display:none}.topbar{height:auto;min-height:54px;flex-wrap:wrap}.topnav{order:3;width:100%;height:35px}.toolbar{height:auto;min-height:42px;flex-wrap:wrap;padding:7px}.search-wrap{margin-left:0;width:100%}.search-wrap input{width:100%;flex:1}.stat-grid{grid-template-columns:repeat(2,minmax(120px,1fr))}.kv-grid{grid-template-columns:1fr}.kv-item{grid-template-columns:125px 1fr}.runtime-grid{grid-template-columns:1fr}.page-heading h1{font-size:18px}.page-meta{display:none}}
+
+/* Interactive XML/object inspection additions */
+.object-inspector{position:fixed;z-index:100;display:none;max-width:420px;max-height:55vh;overflow:auto;background:#17232d;color:#edf3f7;border:1px solid #566773;border-radius:5px;padding:10px 12px;box-shadow:0 8px 28px #0004;font-size:12px;pointer-events:none}
+.object-inspector strong{color:#ffd24a}.object-inspector .ipline{font-family:Consolas,monospace;color:#8fe0b4;margin:4px 0;overflow-wrap:anywhere}
+.xml-modal{display:none;position:fixed;inset:0;z-index:110;background:#101820b8;padding:3vh 3vw;align-items:center;justify-content:center}
+.xml-modal.open{display:flex}.xml-dialog{width:min(1200px,96vw);height:94vh;background:#f7f8f9;border:1px solid #9ba8b2;border-radius:6px;display:flex;flex-direction:column;box-shadow:0 15px 60px #0006}
+.xml-head{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#26343e;color:#fff}.xml-head strong{margin-right:auto}.xml-meta{padding:8px 14px;background:#e8edf0;border-bottom:1px solid #ccd4d9;font-size:12px;overflow-wrap:anywhere}
+.xml-editor{flex:1;min-height:0;width:100%;resize:none;border:0;padding:14px;background:#101820;color:#dce7ee;font:12px/1.5 Consolas,Monaco,monospace;tab-size:2;white-space:pre;overflow:auto}
+.xml-foot{padding:9px 14px;display:flex;gap:8px;align-items:center;background:#e8edf0}.xml-foot .hint{margin-right:auto;color:#66737c;font-size:11px}
+tr[data-xml-inspect]{cursor:context-menu}tr[data-xml-inspect]:hover td:first-child{box-shadow:inset 3px 0 #f0b900}
+
 @media print{.topbar,.sidebar,.toolbar,.icon-button{display:none!important}.layout{display:block}.main{padding:0}.page{display:block!important;break-before:page}.page:first-child{break-before:auto}.panel{break-inside:avoid;box-shadow:none}.table-wrap{max-height:none;overflow:visible}.data-table th{position:static}.data-table{min-width:0}.footer{display:none}}
 </style>
 </head>
 <body>
 <header class="topbar">
   <div class="brand"><span class="brand-mark">P</span><span>PA-View</span><small style="font-size:10px;color:#9da8b1;font-weight:400">__VERSION__</small></div>
-  <nav class="topnav" aria-label="Główna nawigacja">
+  <nav class="topnav" aria-label="Main navigation">
     <button class="active" data-target="dashboard">DASHBOARD</button><button data-target="monitor">ACC</button><button data-target="monitor">MONITOR</button><button data-target="policies">POLICIES</button><button data-target="objects">OBJECTS</button><button data-target="network">NETWORK</button><button data-target="device">DEVICE</button>
   </nav>
   <div class="topbar-right"><span class="readonly">READ ONLY · XML</span><span>__HOST__</span></div>
@@ -1123,10 +1139,19 @@ button,input,select{font:inherit}.topbar{height:58px;background:var(--nav);color
 <div class="layout">
   <aside class="sidebar"><div class="sidebar-caption">CONFIGURATION MENU</div>__NAV__</aside>
   <main class="main">
-    <div class="toolbar"><span class="toolbar-label">View</span><span id="breadcrumb" class="toolbar-label">Dashboard</span><div class="search-wrap"><input id="globalSearch" type="search" placeholder="Search in current section…" autocomplete="off" aria-label="Szukaj w bieżącej sekcji"><select id="filterMode" class="filter-select" aria-label="Filtr wierszy"><option value="all">All rows</option><option value="risk">Potential risks</option><option value="disabled">Disabled</option><option value="unused">Unused objects</option></select><button class="tool-btn" type="button" onclick="clearFilters()">Clear</button><button class="tool-btn" type="button" onclick="exportCSV()">Export CSV</button><button class="tool-btn" type="button" onclick="exportJSON()">Export JSON</button><button class="tool-btn primary" type="button" onclick="window.print()">Print</button></div></div>
+    <div class="toolbar"><span class="toolbar-label">View</span><span id="breadcrumb" class="toolbar-label">Dashboard</span><div class="search-wrap"><input id="globalSearch" type="search" placeholder="Search in current section…" autocomplete="off" aria-label="Search current section"><select id="filterMode" class="filter-select" aria-label="Row filter"><option value="all">All rows</option><option value="risk">Potential risks</option><option value="disabled">Disabled</option><option value="unused">Unused objects</option></select><button class="tool-btn" type="button" onclick="clearFilters()">Clear</button><button class="tool-btn" type="button" onclick="exportCSV()">Export CSV</button><button class="tool-btn" type="button" onclick="exportJSON()">Export JSON</button><button class="tool-btn primary" type="button" onclick="window.print()">Print</button></div></div>
     __PAGES__
     <div class="footer"><span>PA-View · Read-only PAN-OS XML configuration analyzer</span><span>Generated: __GENERATED__ · __SOURCE__</span></div>
   </main>
+</div>
+<div class="object-inspector" id="objectInspector"></div>
+<div class="xml-modal" id="xmlModal" role="dialog" aria-modal="true" aria-label="XML editor">
+ <div class="xml-dialog">
+  <div class="xml-head"><strong>XML Inspector / Editor</strong><button class="tool-btn" type="button" onclick="closeXmlEditor()">Close ✕</button></div>
+  <div class="xml-meta" id="xmlPathMeta">XML path: —</div>
+  <textarea class="xml-editor" id="xmlEditor" spellcheck="false" aria-label="XML editor"></textarea>
+  <div class="xml-foot"><span class="hint">You are editing a copy in the report. The original file is not overwritten automatically.</span><button class="tool-btn" type="button" onclick="formatXmlEditor()">Format XML</button><button class="tool-btn primary" type="button" onclick="downloadEditedXml()">Download XML</button></div>
+ </div>
 </div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script id="report-data" type="application/json">__JSON__</script>
@@ -1145,12 +1170,115 @@ document.getElementById('globalSearch').addEventListener('input',applyFilters);
 document.getElementById('filterMode').addEventListener('change',applyFilters);
 function clearFilters(){document.getElementById('globalSearch').value='';document.getElementById('filterMode').value='all';applyFilters();}
 function togglePanel(button){const panel=button.closest('.panel');if(!panel)return;panel.classList.toggle('collapsed');button.textContent=panel.classList.contains('collapsed')?'+':'−';}
-function refreshPanel(button){const panel=button.closest('.panel');if(!panel)return;panel.querySelectorAll('tbody tr').forEach(row=>row.hidden=false);applyFilters();showToast('Widok panelu odświeżony');}
+function refreshPanel(button){const panel=button.closest('.panel');if(!panel)return;panel.querySelectorAll('tbody tr').forEach(row=>row.hidden=false);applyFilters();showToast('Panel refreshed');}
 function csvEscape(value){return '"'+String(value??'').replace(/"/g,'""')+'"';}
-function exportCSV(){const page=currentPage();if(!page){showToast('Brak aktywnej sekcji');return;}const tables=[...page.querySelectorAll('table')];let lines=[];tables.forEach((table,index)=>{if(index)lines.push('');const title=table.closest('.panel')?.querySelector('.panel-title')?.innerText||'Table';lines.push(csvEscape(title));const headers=[...table.querySelectorAll('thead th')].map(th=>csvEscape(th.innerText.replace(/[▲▼]/g,'').trim()));if(headers.length)lines.push(headers.join(';'));table.querySelectorAll('tbody tr:not([hidden])').forEach(row=>{if(row.querySelector('.empty-cell'))return;lines.push([...row.querySelectorAll('td')].map(td=>csvEscape(td.innerText.trim())).join(';'));});});if(!lines.length){showToast('Brak danych do eksportu');return;}downloadBlob('\ufeff'+lines.join('\r\n'),'pa-view-'+activePage+'.csv','text/csv;charset=utf-8');showToast('Wyeksportowano CSV bieżącej sekcji');}
-function exportJSON(){downloadBlob(JSON.stringify(REPORT,null,2),'pa-view-report.json','application/json;charset=utf-8');showToast('Wyeksportowano pełny raport JSON');}
+function exportCSV(){const page=currentPage();if(!page){showToast('No active section');return;}const tables=[...page.querySelectorAll('table')];let lines=[];tables.forEach((table,index)=>{if(index)lines.push('');const title=table.closest('.panel')?.querySelector('.panel-title')?.innerText||'Table';lines.push(csvEscape(title));const headers=[...table.querySelectorAll('thead th')].map(th=>csvEscape(th.innerText.replace(/[▲▼]/g,'').trim()));if(headers.length)lines.push(headers.join(';'));table.querySelectorAll('tbody tr:not([hidden])').forEach(row=>{if(row.querySelector('.empty-cell'))return;lines.push([...row.querySelectorAll('td')].map(td=>csvEscape(td.innerText.trim())).join(';'));});});if(!lines.length){showToast('No data to export');return;}downloadBlob('\ufeff'+lines.join('\r\n'),'pa-view-'+activePage+'.csv','text/csv;charset=utf-8');showToast('Current section exported as CSV');}
+function exportJSON(){downloadBlob(JSON.stringify(REPORT,null,2),'pa-view-report.json','application/json;charset=utf-8');showToast('Full report exported as JSON');}
 function downloadBlob(content,name,type){const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=name;document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1500);}
 document.querySelectorAll('.data-table thead th').forEach(th=>th.addEventListener('click',()=>{const table=th.closest('table');const index=[...th.parentElement.children].indexOf(th);const body=table.querySelector('tbody');const same=sortState.table===table&&sortState.column===index;const direction=same?-sortState.direction:1;sortState={table,column:index,direction};table.querySelectorAll('th').forEach(h=>{h.removeAttribute('aria-sort');});th.setAttribute('aria-sort',direction===1?'ascending':'descending');const rows=[...body.querySelectorAll('tr')];rows.sort((a,b)=>{const av=a.children[index]?.innerText.trim()||'';const bv=b.children[index]?.innerText.trim()||'';const an=Number(av.replace(/[^0-9.-]/g,''));const bn=Number(bv.replace(/[^0-9.-]/g,''));const numeric=av!==''&&bv!==''&&Number.isFinite(an)&&Number.isFinite(bn)&&/^[\d\s.,%-]+$/.test(av)&&/^[\d\s.,%-]+$/.test(bv);return (numeric?an-bn:av.localeCompare(bv,undefined,{numeric:true,sensitivity:'base'}))*direction;});rows.forEach(row=>body.appendChild(row));applyFilters();}));
+
+// --- PA-View 2.1: object hover, XML path lookup and safe client-side editing ---
+const sourceXml=__SOURCE_XML__;
+const inspector=document.getElementById('objectInspector');
+const xmlModal=document.getElementById('xmlModal');
+const xmlEditor=document.getElementById('xmlEditor');
+let selectedXmlPath='';
+let xmlDoc=null;
+try{if(sourceXml.trim())xmlDoc=new DOMParser().parseFromString(sourceXml,'application/xml');}catch(e){}
+function xmlPathFor(el){
+ if(!el||el.nodeType!==1)return '';
+ const parts=[];let cur=el;
+ while(cur&&cur.nodeType===1){
+  let part=cur.tagName.toLowerCase();
+  if(cur.hasAttribute('name'))part+=`[@name="${cur.getAttribute('name')}"]`;
+  else if(cur.parentElement){const siblings=[...cur.parentElement.children].filter(x=>x.tagName===cur.tagName);if(siblings.length>1)part+=`[${siblings.indexOf(cur)+1}]`;}
+  parts.unshift(part);cur=cur.parentElement;
+ }
+ return '/'+parts.join('/');
+}
+function findXmlElement(label,kind){
+ if(!xmlDoc||!label)return null;
+ const all=[...xmlDoc.getElementsByTagName('*')];
+ // Prefer PAN-OS entry elements named exactly as displayed in the row.
+ let candidates=all.filter(el=>el.tagName.toLowerCase()==='entry'&&el.getAttribute('name')===label);
+ if(!candidates.length)candidates=all.filter(el=>el.getAttribute('name')===label);
+ if(kind==='policy'){
+  const rule=candidates.find(el=>el.parentElement?.tagName.toLowerCase()==='rules');
+  if(rule)return rule;
+ }
+ return candidates[0]||null;
+}
+function objectMatches(rowText){
+ const objs=(REPORT?.objects?.addresses)||[];
+ return objs.filter(o=>o.name&&rowText.includes(o.name));
+}
+function showInspector(row,ev){
+ const txt=row.innerText||'', matches=objectMatches(txt);
+ if(!matches.length)return hideInspector();
+ inspector.innerHTML='<strong>Address objects associated with this rule</strong>'+matches.slice(0,12).map(o=>`<div><b>${escapeText(o.name)}</b><div class="ipline">${escapeText(o.value||'No IP/FQDN value')}</div><small>${escapeText(o.type||'')}</small></div>`).join('');
+ inspector.style.display='block';
+ const x=Math.min(ev.clientX+14,window.innerWidth-440),y=Math.min(ev.clientY+14,window.innerHeight-260);
+ inspector.style.left=Math.max(8,x)+'px';inspector.style.top=Math.max(8,y)+'px';
+}
+function hideInspector(){inspector.style.display='none'}
+function escapeText(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function openXmlForRow(row){
+ const first=row.querySelector('td strong');
+ const label=first?.innerText?.trim()||'';
+ const isPolicy=!!row.closest('#page-policies')||/policy|rule/i.test(row.closest('.panel')?.innerText?.slice(0,80)||'');
+ let el=findXmlElement(label,isPolicy?'policy':'object');
+ if(!el){
+  // Try name extracted from the entire row (policy/object labels).
+  el=findXmlElement(label,'object');
+ }
+ selectedXmlPath=el?xmlPathFor(el):'Element could not be uniquely identified — use Ctrl+F in the XML.';
+ document.getElementById('xmlPathMeta').textContent='Element: '+label+' | XPath-like: '+selectedXmlPath;
+ xmlEditor.value=sourceXml;
+ xmlModal.classList.add('open');
+ if(el){
+  const marker=el.getAttribute('name')||label;
+  const pos=xmlEditor.value.indexOf(`name="${marker}"`);
+  if(pos>=0){xmlEditor.focus();xmlEditor.setSelectionRange(pos,Math.min(pos+marker.length+7,pos+120));}
+ }
+}
+function closeXmlEditor(){xmlModal.classList.remove('open');}
+function formatXmlEditor(){
+ try{
+  const doc=new DOMParser().parseFromString(xmlEditor.value,'application/xml');
+  if(doc.querySelector('parsererror')){showToast('XML contains a syntax error; formatting was not applied.');return;}
+  const serializer=new XMLSerializer().serializeToString(doc);
+  xmlEditor.value=prettyXml(serializer);showToast('XML formatted.');
+ }catch(e){showToast('Failed to format XML.');}
+}
+function prettyXml(xml){
+ let formatted='',pad=0;
+ xml.replace(/(>)(<)(\/*)/g,'$1\\n$2$3').split('\\n').forEach(line=>{
+  if(line.match(/^<\/\w/))pad=Math.max(0,pad-1);
+  formatted+='  '.repeat(pad)+line+'\\n';
+  if(line.match(/^<[^!?/][^>]*[^/]>$/))pad++;
+ });
+ return formatted.trim();
+}
+function downloadEditedXml(){
+ const blob=new Blob([xmlEditor.value],{type:'application/xml;charset=utf-8'});
+ const url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download='PA-View-edited-config.xml';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ showToast('The modified XML is ready to download.');
+}
+document.addEventListener('mouseover',ev=>{
+ const row=ev.target.closest?.('.data-table tbody tr');
+ if(row&&row.querySelector('td strong'))showInspector(row,ev);
+});
+document.addEventListener('mouseout',ev=>{
+ if(ev.target.closest?.('.data-table tbody tr'))hideInspector();
+});
+document.addEventListener('click',ev=>{
+ const row=ev.target.closest?.('.data-table tbody tr');
+ if(row&&row.querySelector('td strong')&&!ev.target.closest('button,a'))openXmlForRow(row);
+});
+document.addEventListener('keydown',ev=>{if(ev.key==='Escape')closeXmlEditor();});
+xmlModal.addEventListener('click',ev=>{if(ev.target===xmlModal)closeXmlEditor();});
+
 const initial=(location.hash||'').slice(1);if(pageNames[initial])activatePage(initial);else applyFilters();
 </script>
 </body></html>'''
@@ -1159,7 +1287,7 @@ const initial=(location.hash||'').slice(1);if(pageNames[initial])activatePage(in
         "__HOST__": esc(data["device_info"].get("hostname", "Palo Alto")),
         "__NAV__": nav_html, "__PAGES__": pages_html,
         "__GENERATED__": esc(data["generated_at"]), "__SOURCE__": esc(data["source_file"]),
-        "__JSON__": safe_json,
+        "__JSON__": safe_json, "__SOURCE_XML__": safe_xml,
     }
     token_pattern = re.compile("|".join(re.escape(key) for key in replacements))
     content = token_pattern.sub(lambda match: replacements[match.group(0)], template)
@@ -1203,10 +1331,10 @@ def main(argv: list[str] | None = None) -> int:
         description="PA-View - read-only Palo Alto Networks PAN-OS XML configuration viewer",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("config_file", nargs="?", help="Ścieżka do running-config.xml / exported configuration XML")
-    parser.add_argument("-o", "--output", help="Ścieżka docelowego raportu HTML")
-    parser.add_argument("--open", action="store_true", help="Otwórz wygenerowany raport w domyślnej przeglądarce")
-    parser.add_argument("--no-gui", action="store_true", help="Nie pokazuj okna wyboru pliku, gdy brak argumentu")
+    parser.add_argument("config_file", nargs="?", help="Path to running-config.xml / exported configuration XML")
+    parser.add_argument("-o", "--output", help="Destination path for the HTML report")
+    parser.add_argument("--open", action="store_true", help="Open the generated report in the default browser")
+    parser.add_argument("--no-gui", action="store_true", help="Do not show the file picker when no argument is provided")
     parser.add_argument("--version", action="version", version=f"PA-View {APP_VERSION}")
     args = parser.parse_args(argv)
 
@@ -1216,7 +1344,7 @@ def main(argv: list[str] | None = None) -> int:
         config_file = _choose_file()
     if not config_file:
         parser.print_help()
-        print("\nNie wybrano pliku XML.", file=sys.stderr)
+        print("\nNo XML file was selected.", file=sys.stderr)
         return 2
     try:
         parse_palo_alto_config(config_file, args.output, args.open or selected_via_gui)
